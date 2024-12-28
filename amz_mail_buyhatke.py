@@ -4,6 +4,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
 from webdriver_manager.chrome import ChromeDriverManager
 import time
 import smtplib
@@ -32,7 +33,7 @@ try:
         EC.presence_of_element_located((By.ID, "product-search-bar"))
     )
     search_bar.send_keys(amazon_url)
-    search_bar.submit()
+    search_bar.send_keys(Keys.ENTER)  # Simulate pressing the Enter key
 
     # Step 3: Wait for the page to load
     time.sleep(30)
