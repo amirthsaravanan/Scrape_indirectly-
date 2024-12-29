@@ -4,13 +4,13 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys
 from webdriver_manager.chrome import ChromeDriverManager
 import time
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
+from datetime import datetime
 
 def web_driver():
     """Set up and return the WebDriver instance."""
@@ -21,48 +21,51 @@ def web_driver():
     options.add_argument("--window-size=1920,1200")
     return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
-try:
-    # Step 1: Open the website
-    url = "https://buyhatke.com/"
-    driver = web_driver()
-    driver.get(url)
+def scrape_product_details(driver, url):
+    """Scrape product details from the given URL."""
+    product_name = "N/A"
+    price = "N/A"
+    try:
+        print(f"Navigating to the URL: {url}")
+        driver.get(url)
+        time.sleep(10)  # Wait for page to load
 
-    # Step 2: Input the Amazon product URL
-    amazon_url = "https://amzn.in/d/2atlNqL"
-    search_bar = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.ID, "product-search-bar"))
-    )
-    search_bar.send_keys(amazon_url)
-    search_bar.send_keys(Keys.ENTER)  # Simulate pressing the Enter key
+        product_name = WebDriverWait(driver, 30).until(
+            EC.presence_of_element_located((By.XPATH, "//h1[@class='font-semibold text-lg']"))
+        ).text.strip()
 
-    # Step 3: Wait for the page to load
-    time.sleep(30)
+        price = WebDriverWait(driver, 30).until(
+            EC.presence_of_element_located((By.XPATH, "//div[@class='content-width mx-auto px-3']"))
+        ).text.strip()
 
-    # Step 4: Scrape the price details
-    price = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, "div.text-base.md\\:text-3xl.font-bold"))
-    ).text
+    except Exception as e:
+        print(f"Error scraping {url}: {e}")
+    return product_name, price
 
-    low_price = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, "p.text-sm.sm\\:text-lg.font-normal.leading-6"))
-    ).text
+# Load URLs from file
+url_file = "url.txt"
+if not os.path.exists(url_file):
+    raise FileNotFoundError(f"{url_file} not found!")
 
-    avg_price = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, "//p[contains(text(),'Average Price')]/.."))
-    ).text
+with open(url_file, "r") as file:
+    urls = [line.strip() for line in file if line.strip()]
 
-    print(f"Price: {price}")
-    print(f"Low Price: {low_price}")
-    print(f"Average Price: {avg_price}")
+if not urls:
+    raise ValueError("No URLs found in the file!")
 
-except Exception as e:
-    print(f"An error occurred: {e}")
-    price = low_price = avg_price = "N/A"
+# Initialize WebDriver
+driver = web_driver()
 
-finally:
-    driver.quit()
+# Scrape product details for all URLs
+product_details = []
+for url in urls:
+    product_name, price = scrape_product_details(driver, url)
+    product_details.append((product_name, price, url))
 
-# Step 5: Email configuration
+# Close the WebDriver
+driver.quit()
+
+# Prepare the email content
 sender_email = os.getenv("SENDER_EMAIL")
 sender_password = os.getenv("SENDER_PASSWORD")
 receiver_email = os.getenv("RECEIVER_EMAIL")
@@ -70,21 +73,19 @@ receiver_email = os.getenv("RECEIVER_EMAIL")
 if not sender_email or not sender_password or not receiver_email:
     raise ValueError("Email credentials not found in environment variables.")
 
-subject = "BuyHatke Price Details"
-body = (
-    f"Product URL: {amazon_url}\n"
-    f"Price: {price}\n"
-    f"Low Price: {low_price}\n"
-    f"Average Price: {avg_price}\n"
-)
+subject = "Amazon Product Details"
+body = "Here are the product details:\n\n"
+for product_name, price, url in product_details:
+    body += f"Product: {product_name}\nPrice: {price}\nLink: {url}\n\n"
 
-# Step 6: Send the email
+# Create the email
 message = MIMEMultipart()
 message["From"] = sender_email
 message["To"] = receiver_email
 message["Subject"] = subject
 message.attach(MIMEText(body, "plain"))
 
+# Send the email
 try:
     with smtplib.SMTP("smtp.gmail.com", 587) as server:
         server.starttls()
